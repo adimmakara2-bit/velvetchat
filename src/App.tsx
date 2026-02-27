@@ -67,6 +67,7 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [serverHealth, setServerHealth] = useState<'checking' | 'ok' | 'error'>('checking');
   
   // WebRTC States
   const [isCalling, setIsCalling] = useState(false);
@@ -97,10 +98,23 @@ export default function App() {
 
   // Initialize Socket
   useEffect(() => {
-    const newSocket = io(window.location.origin, {
+    // Health check
+    const checkHealth = async () => {
+      try {
+        const res = await fetch('/api/health');
+        if (res.ok) setServerHealth('ok');
+        else setServerHealth('error');
+      } catch (e) {
+        setServerHealth('error');
+      }
+    };
+    checkHealth();
+
+    const newSocket = io({
+      path: '/socket.io',
       transports: ['polling', 'websocket'],
-      reconnectionAttempts: 10,
-      reconnectionDelay: 1000,
+      reconnectionAttempts: 20,
+      reconnectionDelay: 2000,
     });
     setSocket(newSocket);
 
@@ -394,6 +408,9 @@ export default function App() {
                 <p className="text-[10px] text-white/40 uppercase tracking-widest font-medium">
                   {isConnected ? 'Server Connected' : connectionError || 'Connecting...'}
                 </p>
+                {serverHealth === 'error' && (
+                  <span className="text-[8px] bg-red-500/20 text-red-500 px-1.5 py-0.5 rounded uppercase font-bold">API Error</span>
+                )}
               </div>
             </div>
           </div>
