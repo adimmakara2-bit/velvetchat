@@ -6,9 +6,11 @@ import { createServer as createViteServer } from "vite";
 import path from "path";
 import Database from "better-sqlite3";
 
+const dbPath = path.resolve(process.cwd(), "chat.db");
 let db: any;
 try {
-  db = new Database("chat.db");
+  db = new Database(dbPath);
+  console.log("Database connected at:", dbPath);
   // Initialize database
   db.exec(`
     CREATE TABLE IF NOT EXISTS messages (
@@ -21,7 +23,12 @@ try {
     )
   `);
 } catch (err) {
-  console.error("Database initialization failed:", err);
+  console.error("Database initialization failed. Falling back to in-memory mode.", err);
+  try {
+    db = new Database(":memory:");
+  } catch (e) {
+    console.error("Critical: Could not even start in-memory database.");
+  }
 }
 
 async function startServer() {
@@ -30,9 +37,11 @@ async function startServer() {
   const io = new Server(httpServer, {
     cors: {
       origin: "*",
-      methods: ["GET", "POST"]
+      methods: ["GET", "POST"],
+      credentials: true
     },
-    transports: ['websocket', 'polling']
+    allowEIO3: true,
+    transports: ['polling', 'websocket'] // Start with polling for better compatibility
   });
 
   const PORT = 3000;
@@ -40,6 +49,10 @@ async function startServer() {
   // Socket.io logic
   io.on("connection", (socket) => {
     console.log("User connected:", socket.id);
+    
+    socket.emit("connection-success", { id: socket.id });
+
+    socket.on("ping", () => socket.emit("pong"));
 
     socket.on("join-room", (roomId) => {
       if (!roomId) return;
@@ -57,12 +70,12 @@ async function startServer() {
           socket.emit("message-history", history);
         }
       } catch (err) {
-        console.error("Failed to fetch history:", err);
+        console.error("Failed to fetch history for room", roomId, err);
       }
     });
 
     socket.on("send-message", (data) => {
-      console.log("Message received:", data);
+      console.log("Broadcasting message to room:", data.roomId, data.text);
       const { id, roomId, text, sender, timestamp, isAI } = data;
       if (!roomId) return;
       
@@ -73,9 +86,10 @@ async function startServer() {
           stmt.run(id, roomId, text, sender, timestamp, isAI ? 1 : 0);
         }
       } catch (err) {
-        console.error("Failed to save message:", err);
+        console.error("Failed to save message to DB:", err);
       }
 
+      // Broadcast to EVERYONE in the room including sender
       io.to(roomId).emit("receive-message", data);
     });
 

@@ -65,6 +65,8 @@ export default function App() {
   const [aiLoading, setAiLoading] = useState(false);
   const [apiKey, setApiKey] = useState('');
   const [showSettings, setShowSettings] = useState(false);
+  const [isConnected, setIsConnected] = useState(false);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
   
   // WebRTC States
   const [isCalling, setIsCalling] = useState(false);
@@ -95,18 +97,42 @@ export default function App() {
 
   // Initialize Socket
   useEffect(() => {
-    const newSocket = io({
-      transports: ['websocket', 'polling'],
-      reconnectionAttempts: 5,
+    const newSocket = io(window.location.origin, {
+      transports: ['polling', 'websocket'],
+      reconnectionAttempts: 10,
+      reconnectionDelay: 1000,
     });
     setSocket(newSocket);
 
     newSocket.on('connect', () => {
-      console.log('Connected to server');
+      console.log('Connected to server:', newSocket.id);
+      setIsConnected(true);
+      setConnectionError(null);
+      
+      // Re-join room if we were already in one
+      if (roomId && joined) {
+        newSocket.emit('join-room', roomId);
+      }
+    });
+
+    newSocket.on('connect_error', (err) => {
+      console.error('Connection error:', err);
+      setConnectionError('Server connection failed. Retrying...');
+      setIsConnected(false);
+    });
+
+    newSocket.on('disconnect', () => {
+      console.log('Disconnected from server');
+      setIsConnected(false);
     });
 
     newSocket.on('receive-message', (data: Message) => {
-      setMessages((prev) => [...prev, data]);
+      console.log('Message received from server:', data);
+      setMessages((prev) => {
+        // Prevent duplicates
+        if (prev.some(m => m.id === data.id)) return prev;
+        return [...prev, data];
+      });
     });
 
     newSocket.on('message-history', (history: Message[]) => {
@@ -363,7 +389,12 @@ export default function App() {
             </div>
             <div>
               <h1 className="text-2xl font-serif font-bold tracking-tight">Velvet Chat</h1>
-              <p className="text-xs text-white/40 uppercase tracking-widest font-medium">Secure & Smooth</p>
+              <div className="flex items-center gap-2">
+                <div className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500 animate-pulse'}`} />
+                <p className="text-[10px] text-white/40 uppercase tracking-widest font-medium">
+                  {isConnected ? 'Server Connected' : connectionError || 'Connecting...'}
+                </p>
+              </div>
             </div>
           </div>
 
@@ -609,17 +640,18 @@ export default function App() {
         <header className="h-16 glass border-b border-white/5 flex items-center justify-between px-6 z-10">
           <div className="flex items-center gap-3">
             <div className="text-white/40 font-mono text-xs"># {roomId}</div>
-            <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+            <div className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500 animate-pulse'}`} />
+            {!isConnected && <span className="text-[10px] text-red-400 font-bold uppercase">Disconnected</span>}
           </div>
           <div className="flex items-center gap-4">
             <button 
               onClick={handleStartCall}
-              disabled={isCalling || callAccepted}
+              disabled={!isConnected || isCalling || callAccepted}
               title="Start Voice Call"
-              className={`p-2 rounded-xl transition-all duration-300 flex items-center justify-center ${
-                isCalling || callAccepted 
-                  ? 'bg-orange-600/20 text-orange-500 opacity-50 cursor-not-allowed' 
-                  : 'bg-white/10 text-white hover:bg-orange-600 hover:text-white shadow-lg'
+              className={`p-3 rounded-xl transition-all duration-300 flex items-center justify-center ${
+                !isConnected || isCalling || callAccepted 
+                  ? 'bg-white/5 text-white/20 cursor-not-allowed' 
+                  : 'bg-orange-600 text-white hover:bg-orange-500 shadow-lg shadow-orange-600/20'
               }`}
             >
               <Phone className="w-5 h-5" />
