@@ -99,14 +99,22 @@ export default function App() {
   // Initialize Socket
   useEffect(() => {
     // Health check
-    const checkHealth = async () => {
-      try {
-        const res = await fetch('/api/health');
-        if (res.ok) setServerHealth('ok');
-        else setServerHealth('error');
-      } catch (e) {
-        setServerHealth('error');
+    const checkHealth = async (retries = 3) => {
+      for (let i = 0; i < retries; i++) {
+        try {
+          console.log(`Health check attempt ${i + 1}...`);
+          const res = await fetch('/api/health');
+          if (res.ok) {
+            console.log('Health check passed');
+            setServerHealth('ok');
+            return;
+          }
+        } catch (e) {
+          console.error(`Health check attempt ${i + 1} failed:`, e);
+        }
+        await new Promise(r => setTimeout(r, 1000));
       }
+      setServerHealth('error');
     };
     checkHealth();
 
