@@ -63,6 +63,8 @@ export default function App() {
   const [isTyping, setIsTyping] = useState(false);
   const [remoteTyping, setRemoteTyping] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
+  const [apiKey, setApiKey] = useState('');
+  const [showSettings, setShowSettings] = useState(false);
   
   // WebRTC States
   const [isCalling, setIsCalling] = useState(false);
@@ -84,6 +86,10 @@ export default function App() {
       const parsed = JSON.parse(savedUser);
       setUser(parsed);
       setUserNameInput(parsed.name);
+    }
+    const savedKey = localStorage.getItem('velvet_api_key');
+    if (savedKey) {
+      setApiKey(savedKey);
     }
   }, []);
 
@@ -288,7 +294,8 @@ export default function App() {
   const handleAIResponse = async (prompt: string) => {
     setAiLoading(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
+      const effectiveKey = apiKey || process.env.GEMINI_API_KEY || '';
+      const ai = new GoogleGenAI({ apiKey: effectiveKey });
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
         contents: `You are an AI assistant in a group chat. Keep your response concise and helpful. Context: ${prompt}`,
@@ -326,6 +333,12 @@ export default function App() {
         setIsTyping(false);
       }
     }, 2000);
+  };
+
+  const handleSaveApiKey = (e: React.FormEvent) => {
+    e.preventDefault();
+    localStorage.setItem('velvet_api_key', apiKey);
+    setShowSettings(false);
   };
 
   if (!joined) {
@@ -404,6 +417,67 @@ export default function App() {
       <div className="atmosphere" />
       <audio ref={remoteAudioRef} autoPlay />
       
+      {/* Settings Modal */}
+      <AnimatePresence>
+        {showSettings && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-md p-6"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              className="glass p-8 rounded-3xl w-full max-w-md shadow-2xl border-white/10"
+            >
+              <div className="flex items-center justify-between mb-8">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center">
+                    <Settings className="w-5 h-5 text-white" />
+                  </div>
+                  <h2 className="text-xl font-bold">Settings</h2>
+                </div>
+                <button 
+                  onClick={() => setShowSettings(false)}
+                  className="text-white/40 hover:text-white transition-colors"
+                >
+                  <LogOut className="w-5 h-5 rotate-180" />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveApiKey} className="space-y-6">
+                <div>
+                  <label className="block text-xs font-semibold text-white/50 uppercase tracking-wider mb-2 ml-1">
+                    Gemini API Key
+                  </label>
+                  <div className="relative">
+                    <Sparkles className="absolute left-4 top-1/2 -translate-y-1/2 text-white/30 w-4 h-4" />
+                    <input 
+                      type="password" 
+                      value={apiKey}
+                      onChange={(e) => setApiKey(e.target.value)}
+                      placeholder="Enter your custom API key..."
+                      className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 pl-12 pr-4 focus:outline-none focus:border-orange-500/50 transition-colors placeholder:text-white/20"
+                    />
+                  </div>
+                  <p className="mt-2 text-[10px] text-white/30 leading-relaxed px-1">
+                    If left empty, the application will use the default system key. Your key is stored locally in your browser.
+                  </p>
+                </div>
+
+                <button 
+                  type="submit"
+                  className="w-full bg-white text-black font-semibold py-4 rounded-2xl hover:bg-orange-500 hover:text-white transition-all duration-300"
+                >
+                  Save Settings
+                </button>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Call Overlays */}
       <AnimatePresence>
         {isIncomingCall && (
@@ -514,7 +588,10 @@ export default function App() {
               <div className="text-sm font-semibold truncate">{user?.name}</div>
               <div className="text-[10px] text-white/40">Online</div>
             </div>
-            <Settings className="w-4 h-4 text-white/30" />
+            <Settings 
+              className="w-4 h-4 text-white/30 cursor-pointer hover:text-white transition-colors" 
+              onClick={() => setShowSettings(true)} 
+            />
           </div>
         </div>
       </aside>
