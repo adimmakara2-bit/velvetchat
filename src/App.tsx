@@ -95,8 +95,15 @@ export default function App() {
 
   // Initialize Socket
   useEffect(() => {
-    const newSocket = io();
+    const newSocket = io({
+      transports: ['websocket', 'polling'],
+      reconnectionAttempts: 5,
+    });
     setSocket(newSocket);
+
+    newSocket.on('connect', () => {
+      console.log('Connected to server');
+    });
 
     newSocket.on('receive-message', (data: Message) => {
       setMessages((prev) => [...prev, data]);
@@ -608,9 +615,14 @@ export default function App() {
             <button 
               onClick={handleStartCall}
               disabled={isCalling || callAccepted}
-              className="glass p-2 rounded-xl text-white/60 hover:text-white transition-colors disabled:opacity-30"
+              title="Start Voice Call"
+              className={`p-2 rounded-xl transition-all duration-300 flex items-center justify-center ${
+                isCalling || callAccepted 
+                  ? 'bg-orange-600/20 text-orange-500 opacity-50 cursor-not-allowed' 
+                  : 'bg-white/10 text-white hover:bg-orange-600 hover:text-white shadow-lg'
+              }`}
             >
-              <Phone className="w-4 h-4" />
+              <Phone className="w-5 h-5" />
             </button>
             <div className="flex -space-x-2">
               {[1, 2].map(i => (

@@ -1,3 +1,4 @@
+import "dotenv/config";
 import express from "express";
 import { createServer } from "http";
 import { Server } from "socket.io";
@@ -5,19 +6,23 @@ import { createServer as createViteServer } from "vite";
 import path from "path";
 import Database from "better-sqlite3";
 
-const db = new Database("chat.db");
-
-// Initialize database
-db.exec(`
-  CREATE TABLE IF NOT EXISTS messages (
-    id TEXT PRIMARY KEY,
-    roomId TEXT,
-    text TEXT,
-    sender TEXT,
-    timestamp INTEGER,
-    isAI INTEGER DEFAULT 0
-  )
-`);
+let db: any;
+try {
+  db = new Database("chat.db");
+  // Initialize database
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS messages (
+      id TEXT PRIMARY KEY,
+      roomId TEXT,
+      text TEXT,
+      sender TEXT,
+      timestamp INTEGER,
+      isAI INTEGER DEFAULT 0
+    )
+  `);
+} catch (err) {
+  console.error("Database initialization failed:", err);
+}
 
 async function startServer() {
   const app = express();
@@ -26,7 +31,8 @@ async function startServer() {
     cors: {
       origin: "*",
       methods: ["GET", "POST"]
-    }
+    },
+    transports: ['websocket', 'polling']
   });
 
   const PORT = 3000;
@@ -36,33 +42,46 @@ async function startServer() {
     console.log("User connected:", socket.id);
 
     socket.on("join-room", (roomId) => {
+      if (!roomId) return;
       socket.join(roomId);
       console.log(`User ${socket.id} joined room: ${roomId}`);
 
       // Fetch message history
-      const stmt = db.prepare("SELECT * FROM messages WHERE roomId = ? ORDER BY timestamp ASC LIMIT 100");
-      const history = stmt.all(roomId).map((msg: any) => ({
-        ...msg,
-        isAI: !!msg.isAI
-      }));
-      
-      socket.emit("message-history", history);
+      try {
+        if (db) {
+          const stmt = db.prepare("SELECT * FROM messages WHERE roomId = ? ORDER BY timestamp ASC LIMIT 100");
+          const history = stmt.all(roomId).map((msg: any) => ({
+            ...msg,
+            isAI: !!msg.isAI
+          }));
+          socket.emit("message-history", history);
+        }
+      } catch (err) {
+        console.error("Failed to fetch history:", err);
+      }
     });
 
     socket.on("send-message", (data) => {
-      // data: { id, roomId, text, sender, timestamp, isAI }
+      console.log("Message received:", data);
       const { id, roomId, text, sender, timestamp, isAI } = data;
+      if (!roomId) return;
       
       // Save to DB
-      const stmt = db.prepare("INSERT INTO messages (id, roomId, text, sender, timestamp, isAI) VALUES (?, ?, ?, ?, ?, ?)");
-      stmt.run(id, roomId, text, sender, timestamp, isAI ? 1 : 0);
+      try {
+        if (db) {
+          const stmt = db.prepare("INSERT INTO messages (id, roomId, text, sender, timestamp, isAI) VALUES (?, ?, ?, ?, ?, ?)");
+          stmt.run(id, roomId, text, sender, timestamp, isAI ? 1 : 0);
+        }
+      } catch (err) {
+        console.error("Failed to save message:", err);
+      }
 
       io.to(roomId).emit("receive-message", data);
     });
 
     // WebRTC Signaling
     socket.on("call-user", (data) => {
-      // data: { offer, roomId, callerName }
+      console.log("Call initiated in room:", data.roomId);
       socket.to(data.roomId).emit("incoming-call", {
         offer: data.offer,
         from: socket.id,
