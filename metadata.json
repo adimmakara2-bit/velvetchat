@@ -1,0 +1,5 @@
+{
+  "name": "Velvet Chat",
+  "description": "A ultra-smooth, real-time messaging application with AI-powered smart features and immersive design.",
+  "requestFramePermissions": ["microphone"]
+}
